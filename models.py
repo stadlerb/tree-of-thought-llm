@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 
 import backoff
 import openai
@@ -72,7 +73,15 @@ async def achatgpt(messages, model="gpt-4", temperature=0.7, max_tokens=1000, n=
     return outputs
 
 
-@backoff.on_exception(backoff.expo, openai.error.OpenAIError)
+def normal_backoff(mu=10.0, sigma=1.0, min_val=0.0, max_val=float('inf')):
+    def backoff_generator():
+        while True:
+            yield max(min_val, min(max_val, random.normalvariate(mu, sigma)))
+
+    return backoff_generator
+
+
+@backoff.on_exception(normal_backoff(mu=15.0, sigma=2.5, min_val=0.0, max_val=60.0), openai.error.OpenAIError)
 async def acompletions_with_backoff(**kwargs):
     return await openai.ChatCompletion.acreate(**kwargs)
 
