@@ -31,7 +31,7 @@ def chatgpt(messages, model="gpt-4", temperature=0.7, max_tokens=1000, n=1, stop
     global completion_tokens, prompt_tokens
     outputs = []
     while n > 0:
-        cnt = min(n, 20)
+        cnt = min(n, 20)  # What's this magic 20?
         n -= cnt
         res = completions_with_backoff(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens,
                                        n=cnt, stop=stop)

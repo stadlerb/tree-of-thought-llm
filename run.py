@@ -6,9 +6,11 @@ from functools import partial
 
 import numpy as np
 
+import models
 from models import gpt_usage
 from tasks import get_task
 
+global gpt
 
 def get_value(task, x, y, n_evaluate_sample, cache_value=True):
     value_prompt = task.value_prompt_wrap(x, y)
@@ -71,6 +73,8 @@ def solve(args, task, idx, to_print=True):
                 for y in ys]
         elif args.method_generate == 'propose':
             new_ys = [get_proposals(task, x, y) for y in ys]
+        else:
+            raise ValueError(f"Unknown generation method {args.method_generate}")
         new_ys = list(itertools.chain(*new_ys))
         ids = list(range(len(new_ys)))
         # evaluation
@@ -78,6 +82,8 @@ def solve(args, task, idx, to_print=True):
             values = get_votes(task, x, new_ys, args.n_evaluate_sample)
         elif args.method_evaluate == 'value':
             values = get_values(task, x, new_ys, args.n_evaluate_sample)
+        else:
+            raise ValueError(f"Unknown evaluation method {args.method_evaluate}")
 
         # selection
         if args.method_select == 'sample':
@@ -85,6 +91,8 @@ def solve(args, task, idx, to_print=True):
             select_ids = np.random.choice(ids, size=args.n_select_sample, p=ps).tolist()
         elif args.method_select == 'greedy':
             select_ids = sorted(ids, key=lambda x: values[x], reverse=True)[:args.n_select_sample]
+        else:
+            raise ValueError(f"Unknown selection method {args.method_select}")
         select_new_ys = [new_ys[select_id] for select_id in select_ids]
 
         # log
@@ -111,7 +119,7 @@ def run(args):
     task = get_task(args.task, args.task_file_path)
     logs, cnt_avg, cnt_any = [], 0, 0
     global gpt
-    gpt = partial(gpt, model=args.backend, temperature=args.temperature)
+    gpt = partial(models.gpt, model=args.backend, temperature=args.temperature)
     if args.naive_run:
         file = f'logs/{args.task}/{args.backend}_{args.temperature}_naive_{args.prompt_sample}_sample_{args.n_generate_sample}_start{args.task_start_index}_end{args.task_end_index}.json'
     else:
