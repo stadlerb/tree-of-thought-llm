@@ -1,11 +1,14 @@
+import datetime
 import itertools
 import logging
 from functools import partial
 
 import numpy as np
+
 import tot.models
 
 log = logging.getLogger(__name__)
+
 
 def get_value(task, x, y, n_evaluate_sample, cache_value=True):
     value_prompt = task.value_prompt_wrap(x, y)
@@ -21,9 +24,12 @@ def get_value(task, x, y, n_evaluate_sample, cache_value=True):
 def get_values(task, x, ys, n_evaluate_sample, cache_value=True):
     values = []
     local_value_cache = {}
-    for y in ys:  # each partial output
+    n = len(ys)
+    for i, y in enumerate(ys):  # each partial output
+        log.debug(f"get_value {i} / {n} -- {datetime.datetime.now()}")
         if y in local_value_cache:  # avoid duplicate candidates
             value = 0
+            log.debug("--> duplicate candidate, value set to 0")
         else:
             value = get_value(task, x, y, n_evaluate_sample, cache_value=cache_value)
             local_value_cache[y] = value
@@ -64,6 +70,7 @@ def solve(args, task, idx):
     infos = []
     for step in range(task.steps):
         # generation
+        log.debug(f"Step {step} generation started -- {datetime.datetime.now()}")
         if args.method_generate == 'sample':
             new_ys = [
                 get_samples(task, x, y, args.n_generate_sample, prompt_sample=args.prompt_sample, stop=task.stops[step])
@@ -75,6 +82,7 @@ def solve(args, task, idx):
         new_ys = list(itertools.chain(*new_ys))
         ids = list(range(len(new_ys)))
         # evaluation
+        log.debug(f"Step {step} evaluation started -- {datetime.datetime.now()}")
         if args.method_evaluate == 'vote':
             values = get_votes(task, x, new_ys, args.n_evaluate_sample)
         elif args.method_evaluate == 'value':
@@ -83,14 +91,18 @@ def solve(args, task, idx):
             raise ValueError(f"Unknown evaluation method {args.method_evaluate}")
 
         # selection
+        log.debug(f"Step {step} selection started -- {datetime.datetime.now()}")
         if args.method_select == 'sample':
-            ps = np.array(values) / sum(values)
+            # add small value to avoid NaN if all values are 0, or is it better to fail in that case?
+            v = np.array(values)  # + 0.001
+            ps = v / v.sum()
             select_ids = np.random.choice(ids, size=args.n_select_sample, p=ps).tolist()
         elif args.method_select == 'greedy':
             select_ids = sorted(ids, key=lambda x: values[x], reverse=True)[:args.n_select_sample]
         else:
             raise ValueError(f"Unknown selection method {args.method_select}")
         select_new_ys = [new_ys[select_id] for select_id in select_ids]
+        log.debug(f"Step {step} done -- {datetime.datetime.now()}")
 
         # log
         if log.isEnabledFor(logging.DEBUG):
