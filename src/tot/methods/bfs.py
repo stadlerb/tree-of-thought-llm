@@ -2,7 +2,7 @@ import itertools
 from functools import partial
 
 import numpy as np
-
+import tot.models
 
 def get_value(task, x, y, n_evaluate_sample, cache_value=True):
     value_prompt = task.value_prompt_wrap(x, y)
@@ -54,7 +54,7 @@ def get_samples(task, x, y, n_generate_sample, prompt_sample, stop):
 
 def solve(args, task, idx, to_print=True):
     global gpt
-    gpt = partial(gpt, model=args.backend, temperature=args.temperature)
+    gpt = partial(tot.models.gpt, model=args.backend, temperature=args.temperature)
     print(gpt)
     x = task.get_input(idx)  # input
     ys = ['']  # current output candidates
@@ -67,6 +67,8 @@ def solve(args, task, idx, to_print=True):
                 for y in ys]
         elif args.method_generate == 'propose':
             new_ys = [get_proposals(task, x, y) for y in ys]
+        else:
+            raise ValueError(f"Unknown generation method {args.method_generate}")
         new_ys = list(itertools.chain(*new_ys))
         ids = list(range(len(new_ys)))
         # evaluation
@@ -74,6 +76,8 @@ def solve(args, task, idx, to_print=True):
             values = get_votes(task, x, new_ys, args.n_evaluate_sample)
         elif args.method_evaluate == 'value':
             values = get_values(task, x, new_ys, args.n_evaluate_sample)
+        else:
+            raise ValueError(f"Unknown evaluation method {args.method_evaluate}")
 
         # selection
         if args.method_select == 'sample':
@@ -81,6 +85,8 @@ def solve(args, task, idx, to_print=True):
             select_ids = np.random.choice(ids, size=args.n_select_sample, p=ps).tolist()
         elif args.method_select == 'greedy':
             select_ids = sorted(ids, key=lambda x: values[x], reverse=True)[:args.n_select_sample]
+        else:
+            raise ValueError(f"Unknown selection method {args.method_select}")
         select_new_ys = [new_ys[select_id] for select_id in select_ids]
 
         # log
@@ -99,7 +105,7 @@ def solve(args, task, idx, to_print=True):
 
 def naive_solve(args, task, idx, to_print=True):
     global gpt
-    gpt = partial(gpt, model=args.backend, temperature=args.temperature)
+    gpt = partial(tot.models.gpt, model=args.backend, temperature=args.temperature)
     print(gpt)
     x = task.get_input(idx)  # input
     ys = get_samples(task, x, '', args.n_generate_sample, args.prompt_sample, stop=None)
