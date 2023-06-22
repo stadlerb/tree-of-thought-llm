@@ -1,11 +1,17 @@
+import asyncio
 import datetime
 import itertools
 import logging
+import typing
 from functools import partial
+from typing import TypeVar, Any, List
 
 import numpy as np
 
 import tot.models
+
+global model_call
+global model_call_async
 
 log = logging.getLogger(__name__)
 
@@ -14,21 +20,21 @@ def get_value(task, x, y, n_evaluate_sample, cache_value=True):
     value_prompt = task.value_prompt_wrap(x, y)
     if cache_value and value_prompt in task.value_cache:
         return task.value_cache[value_prompt]
-    value_outputs = gpt(value_prompt, n=n_evaluate_sample, stop=None)
-    value = task.value_outputs_unwrap(x, y, value_outputs)
+    value_outputs = model_call(value_prompt, n=n_evaluate_sample, stop=None)
+    value: float = task.value_outputs_unwrap(x, y, value_outputs)
     if cache_value:
         task.value_cache[value_prompt] = value
     return value
 
 
-def get_values(task, x, ys, n_evaluate_sample, cache_value=True):
-    values = []
+def get_values(task, x, ys, n_evaluate_sample, cache_value=True) -> List[float]:
+    values: List[float] = []
     local_value_cache = {}
     n = len(ys)
     for i, y in enumerate(ys):  # each partial output
         log.debug(f"get_value {i} / {n} -- {datetime.datetime.now()}")
         if y in local_value_cache:  # avoid duplicate candidates
-            value = 0
+            value = 0.0
             log.debug("--> duplicate candidate, value set to 0")
         else:
             value = get_value(task, x, y, n_evaluate_sample, cache_value=cache_value)
@@ -37,16 +43,55 @@ def get_values(task, x, ys, n_evaluate_sample, cache_value=True):
     return values
 
 
+async def aget_value(task, x, y, n_evaluate_sample, cache_value=True):
+    value_prompt = task.value_prompt_wrap(x, y)
+    if cache_value and value_prompt in task.value_cache:
+        return task.value_cache[value_prompt]
+    value_outputs = await model_call_async(value_prompt, n=n_evaluate_sample, stop=None)
+    value: float = task.value_outputs_unwrap(x, y, value_outputs)
+    if cache_value:
+        task.value_cache[value_prompt] = value
+    return value
+
+
+T = TypeVar("T")
+
+
+async def aconst(x: T) -> T:
+    return x
+
+
+async def aget_values(task, x, ys, n_evaluate_sample, cache_value=True) -> List[float]:
+    a_values: List[typing.Coroutine[Any, Any, float]] = []
+    local_value_cache = {}
+    n = len(ys)
+    for i, y in enumerate(ys):  # each partial output
+        log.debug(f"get_value {i} / {n} -- {datetime.datetime.now()}")
+        if y in local_value_cache:  # avoid duplicate candidates
+            a_value = aconst(0.0)
+            log.debug("--> duplicate candidate, value set to 0")
+        else:
+            a_value = aget_value(task, x, y, n_evaluate_sample, cache_value=cache_value)
+            local_value_cache[y] = a_value
+        a_values.append(a_value)
+    results: List[float | Exception] = await asyncio.gather(*a_values, return_exceptions=True)
+    return [result if not isinstance(result, Exception) else 0.0 for result in results]
+
+
+def get_values_async(task, x, ys, n_evaluate_sample, cache_value=True):
+    return asyncio.run(aget_values(task, x, ys, n_evaluate_sample, cache_value=cache_value))
+
+
 def get_votes(task, x, ys, n_evaluate_sample):
     vote_prompt = task.vote_prompt_wrap(x, ys)
-    vote_outputs = gpt(vote_prompt, n=n_evaluate_sample, stop=None)
+    vote_outputs = model_call(vote_prompt, n=n_evaluate_sample, stop=None)
     values = task.vote_outputs_unwrap(vote_outputs, len(ys))
     return values
 
 
 def get_proposals(task, x, y):
     propose_prompt = task.propose_prompt_wrap(x, y)
-    proposals = gpt(propose_prompt, n=1, stop=None)[0].split('\n')
+    proposals = model_call(propose_prompt, n=1, stop=None)[0].split('\n')
     return [y + _ + '\n' for _ in proposals]
 
 
@@ -57,14 +102,12 @@ def get_samples(task, x, y, n_generate_sample, prompt_sample, stop):
         prompt = task.cot_prompt_wrap(x, y)
     else:
         raise ValueError(f'prompt_sample {prompt_sample} not recognized')
-    samples = gpt(prompt, n=n_generate_sample, stop=stop)
+    samples = model_call(prompt, n=n_generate_sample, stop=stop)
     return [y + _ for _ in samples]
 
 
 def solve(args, task, idx):
-    global gpt
-    gpt = partial(tot.models.gpt, model=args.backend, temperature=args.temperature)
-    log.debug(gpt)
+    init_globals(args)
     x = task.get_input(idx)  # input
     ys = ['']  # current output candidates
     infos = []
@@ -87,6 +130,8 @@ def solve(args, task, idx):
             values = get_votes(task, x, new_ys, args.n_evaluate_sample)
         elif args.method_evaluate == 'value':
             values = get_values(task, x, new_ys, args.n_evaluate_sample)
+        elif args.method_evaluate == 'value_async':
+            values = get_values_async(task, x, new_ys, args.n_evaluate_sample)
         else:
             raise ValueError(f"Unknown evaluation method {args.method_evaluate}")
 
@@ -119,9 +164,14 @@ def solve(args, task, idx):
 
 
 def naive_solve(args, task, idx):
-    global gpt
-    gpt = partial(tot.models.gpt, model=args.backend, temperature=args.temperature)
-    log.debug(gpt)
+    init_globals(args)
     x = task.get_input(idx)  # input
     ys = get_samples(task, x, '', args.n_generate_sample, args.prompt_sample, stop=None)
     return ys, {}
+
+
+def init_globals(args):
+    global model_call, model_call_async
+    model_call = partial(tot.models.gpt, model=args.backend, temperature=args.temperature)
+    model_call_async = partial(tot.models.agpt, model=args.backend, temperature=args.temperature)
+    log.debug(model_call)
