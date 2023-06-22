@@ -1,6 +1,7 @@
 import argparse
 import itertools
 import json
+import logging
 import os
 from functools import partial
 
@@ -11,6 +12,9 @@ from models import gpt_usage
 from tasks import get_task
 
 global gpt
+
+log = logging.getLogger("tree_of_thought_run")
+
 
 def get_value(task, x, y, n_evaluate_sample, cache_value=True):
     value_prompt = task.value_prompt_wrap(x, y)
@@ -60,8 +64,8 @@ def get_samples(task, x, y, n_generate_sample, prompt_sample, stop):
     return [y + _ for _ in samples]
 
 
-def solve(args, task, idx, to_print=True):
-    print(gpt)
+def solve(args, task, idx):
+    log.debug(gpt)
     x = task.get_input(idx)  # input
     ys = ['']  # current output candidates
     infos = []
@@ -96,20 +100,20 @@ def solve(args, task, idx, to_print=True):
         select_new_ys = [new_ys[select_id] for select_id in select_ids]
 
         # log
-        if to_print:
+        if log.isEnabledFor(logging.DEBUG):
             sorted_new_ys, sorted_values = zip(*sorted(zip(new_ys, values), key=lambda x: x[1], reverse=True))
-            print(f'-- new_ys --: {sorted_new_ys}\n-- sol values --: {sorted_values}\n-- choices --: {select_new_ys}\n')
+            log.debug(
+                f'-- new_ys --: {sorted_new_ys}\n-- sol values --: {sorted_values}\n-- choices --: {select_new_ys}\n')
 
         infos.append(
             {'step': step, 'x': x, 'ys': ys, 'new_ys': new_ys, 'values': values, 'select_new_ys': select_new_ys})
         ys = select_new_ys
 
-    if to_print:
-        print(ys)
+    log.debug(ys)
     return ys, {'steps': infos}
 
 
-def naive_solve(args, task, idx, to_print=True):
+def naive_solve(args, task, idx):
     x = task.get_input(idx)  # input
     ys = get_samples(task, x, '', args.n_generate_sample, args.prompt_sample, stop=None)
     return ys, {}
@@ -144,11 +148,11 @@ def run(args):
         accs = [info['r'] for info in infos]
         cnt_avg += sum(accs) / len(accs)
         cnt_any += any(accs)
-        print(i, 'sum(accs)', sum(accs), 'cnt_avg', cnt_avg, 'cnt_any', cnt_any, '\n')
+        log.info(f'{i} sum(accs) {sum(accs)}, cnt_avg {cnt_avg}, cnt_any {cnt_any}')
 
     n = args.task_end_index - args.task_start_index
-    print(cnt_avg / n, cnt_any / n)
-    print('usage_so_far', gpt_usage(args.backend))
+    log.info(f'{cnt_avg / n} {cnt_any / n}')
+    log.info(f'usage_so_far {gpt_usage(args.backend)}')
 
 
 def parse_args():
@@ -172,11 +176,16 @@ def parse_args():
     args.add_argument('--n_evaluate_sample', type=int, default=1)
     args.add_argument('--n_select_sample', type=int, default=1)
 
+    args.add_argument('--log_level', type=str, choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'],
+                      default='INFO')
+
     args = args.parse_args()
     return args
 
 
 if __name__ == '__main__':
     args = parse_args()
-    print(args)
+    logging.basicConfig(level=args.log_level)
+    log.info(args)
+    models.init_api()
     run(args)

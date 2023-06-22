@@ -1,20 +1,24 @@
+import logging
 import os
 
 import backoff
 import openai
 
+log = logging.getLogger(__name__)
 completion_tokens = prompt_tokens = 0
 
-api_key = os.getenv("OPENAI_API_KEY", "")
-if api_key != "":
-    openai.api_key = api_key
-else:
-    print("Warning: OPENAI_API_KEY is not set")
 
-api_base = os.getenv("OPENAI_API_BASE", "")
-if api_base != "":
-    print("Warning: OPENAI_API_BASE is set to {}".format(api_base))
-    openai.api_base = api_base
+def init_api():
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if api_key != "":
+        openai.api_key = api_key
+    else:
+        log.warning("OPENAI_API_KEY is not set")
+
+    api_base = os.getenv("OPENAI_API_BASE", "")
+    if api_base != "":
+        log.info(f"OPENAI_API_BASE is set to {api_base}")
+        openai.api_base = api_base
 
 
 @backoff.on_exception(backoff.expo, openai.error.OpenAIError)

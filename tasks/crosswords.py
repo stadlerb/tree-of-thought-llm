@@ -1,10 +1,12 @@
 import json
+import logging
 import re
 
 from models import gpt
 from prompts.crosswords import *
 from tasks.base import Task
 
+log = logging.getLogger(__name__)
 
 class MiniCrosswordsEnv:
     def __init__(self, file='mini0505.json'):
@@ -49,12 +51,12 @@ class MiniCrosswordsEnv:
             else:
                 res = gpt(prompt)[0]
                 self.prompt_status_cache[prompt] = res
-            # print(line)
-            # print(res)
-            # print()
+            # log.debug(line)
+            # log.debug(res)
+            # log.debug()
             res = res.split('\n')[-1].strip()
             if res in count: count[res] += 1
-        # print(count)
+        # log.debug(count)
         return count
 
     def render_gt_board(self):
@@ -200,7 +202,7 @@ class MiniCrosswordsTask(Task):
             word = ''.join(letters)
             word = word + '_' * (5 - len(word))
             action = f'h{i}. {word}'
-            # print(action)
+            # log.debug(action)
             _, _, _, info = self.env.step(action)
         info['r'] = info['r_word']
         return info
@@ -252,10 +254,10 @@ class MiniCrosswordsTask(Task):
             line = f'{data}: {ans}'
             prompt = value_prompt.format(input=line)
             res = gpt(prompt)[0]
-            print(line)
-            print(res)
-            print()
+            log.info(line)
+            log.info(res)
+            log.info()
             res = res.split('\n')[-1].strip()
             if res in count: count[res] += 1
-        print(count)
+        log.info(count)
         return count
