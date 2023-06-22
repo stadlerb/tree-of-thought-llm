@@ -1,11 +1,14 @@
 import argparse
+import asyncio
 import datetime
 import itertools
 import json
 import logging
 import os
 import statistics
+import typing
 from functools import partial
+from typing import TypeVar, Any, List
 
 import numpy as np
 
@@ -14,6 +17,7 @@ from models import gpt_usage
 from tasks import get_task
 
 global gpt
+global agpt
 
 log = logging.getLogger("tree_of_thought_run")
 
@@ -23,26 +27,65 @@ def get_value(task, x, y, n_evaluate_sample, cache_value=True):
     if cache_value and value_prompt in task.value_cache:
         return task.value_cache[value_prompt]
     value_outputs = gpt(value_prompt, n=n_evaluate_sample, stop=None)
-    value = task.value_outputs_unwrap(x, y, value_outputs)
+    value: float = task.value_outputs_unwrap(x, y, value_outputs)
     if cache_value:
         task.value_cache[value_prompt] = value
     return value
 
 
-def get_values(task, x, ys, n_evaluate_sample, cache_value=True):
-    values = []
+def get_values(task, x, ys, n_evaluate_sample, cache_value=True) -> List[float]:
+    values: List[float] = []
     local_value_cache = {}
     n = len(ys)
     for i, y in enumerate(ys):  # each partial output
         log.debug(f"get_value {i} / {n} -- {datetime.datetime.now()}")
         if y in local_value_cache:  # avoid duplicate candidates
-            value = 0
+            value = 0.0
             log.debug("--> duplicate candidate, value set to 0")
         else:
             value = get_value(task, x, y, n_evaluate_sample, cache_value=cache_value)
             local_value_cache[y] = value
         values.append(value)
     return values
+
+
+async def aget_value(task, x, y, n_evaluate_sample, cache_value=True):
+    value_prompt = task.value_prompt_wrap(x, y)
+    if cache_value and value_prompt in task.value_cache:
+        return task.value_cache[value_prompt]
+    value_outputs = await agpt(value_prompt, n=n_evaluate_sample, stop=None)
+    value: float = task.value_outputs_unwrap(x, y, value_outputs)
+    if cache_value:
+        task.value_cache[value_prompt] = value
+    return value
+
+
+T = TypeVar("T")
+
+
+async def aconst(x: T) -> T:
+    return x
+
+
+async def aget_values(task, x, ys, n_evaluate_sample, cache_value=True) -> List[float]:
+    a_values: List[typing.Coroutine[Any, Any, float]] = []
+    local_value_cache = {}
+    n = len(ys)
+    for i, y in enumerate(ys):  # each partial output
+        log.debug(f"get_value {i} / {n} -- {datetime.datetime.now()}")
+        if y in local_value_cache:  # avoid duplicate candidates
+            a_value = aconst(0.0)
+            log.debug("--> duplicate candidate, value set to 0")
+        else:
+            a_value = aget_value(task, x, y, n_evaluate_sample, cache_value=cache_value)
+            local_value_cache[y] = a_value
+        a_values.append(a_value)
+    results: List[float | Exception] = await asyncio.gather(*a_values, return_exceptions=True)
+    return [result if not isinstance(result, Exception) else 0.0 for result in results]
+
+
+def get_values_async(task, x, ys, n_evaluate_sample, cache_value=True):
+    return asyncio.run(aget_values(task, x, ys, n_evaluate_sample, cache_value=cache_value))
 
 
 def get_votes(task, x, ys, n_evaluate_sample):
@@ -93,6 +136,8 @@ def solve(args, task, idx):
             values = get_votes(task, x, new_ys, args.n_evaluate_sample)
         elif args.method_evaluate == 'value':
             values = get_values(task, x, new_ys, args.n_evaluate_sample)
+        elif args.method_evaluate == 'value_async':
+            values = get_values_async(task, x, new_ys, args.n_evaluate_sample)
         else:
             raise ValueError(f"Unknown evaluation method {args.method_evaluate}")
 
@@ -133,8 +178,9 @@ def naive_solve(args, task, idx):
 def run(args):
     task = get_task(args.task, args.task_file_path)
     logs, cnt_avg, cnt_any = [], 0, 0
-    global gpt
+    global gpt, agpt
     gpt = partial(models.gpt, model=args.backend, temperature=args.temperature)
+    agpt = partial(models.agpt, model=args.backend, temperature=args.temperature)
     if args.naive_run:
         file = f'logs/{args.task}/{args.backend}_{args.temperature}_naive_{args.prompt_sample}_sample_{args.n_generate_sample}_start{args.task_start_index}_end{args.task_end_index}.json'
     else:
@@ -212,7 +258,7 @@ def parse_args():
                       choices=['standard', 'cot'])  # only used when method_generate = sample, or naive_run
 
     args.add_argument('--method_generate', type=str, choices=['sample', 'propose'])
-    args.add_argument('--method_evaluate', type=str, choices=['value', 'vote'])
+    args.add_argument('--method_evaluate', type=str, choices=['value', 'value_async', 'vote'])
     args.add_argument('--method_select', type=str, choices=['sample', 'greedy'])
     args.add_argument('--n_generate_sample', type=int, default=1)  # only thing needed if naive_run
     args.add_argument('--n_evaluate_sample', type=int, default=1)
