@@ -1,8 +1,10 @@
 import argparse
+import datetime
 import itertools
 import json
 import logging
 import os
+import statistics
 from functools import partial
 
 import numpy as np
@@ -30,9 +32,12 @@ def get_value(task, x, y, n_evaluate_sample, cache_value=True):
 def get_values(task, x, ys, n_evaluate_sample, cache_value=True):
     values = []
     local_value_cache = {}
-    for y in ys:  # each partial output
+    n = len(ys)
+    for i, y in enumerate(ys):  # each partial output
+        log.debug(f"get_value {i} / {n} -- {datetime.datetime.now()}")
         if y in local_value_cache:  # avoid duplicate candidates
             value = 0
+            log.debug("--> duplicate candidate, value set to 0")
         else:
             value = get_value(task, x, y, n_evaluate_sample, cache_value=cache_value)
             local_value_cache[y] = value
@@ -71,6 +76,7 @@ def solve(args, task, idx):
     infos = []
     for step in range(task.steps):
         # generation
+        log.debug(f"Step {step} generation started -- {datetime.datetime.now()}")
         if args.method_generate == 'sample':
             new_ys = [
                 get_samples(task, x, y, args.n_generate_sample, prompt_sample=args.prompt_sample, stop=task.stops[step])
@@ -82,6 +88,7 @@ def solve(args, task, idx):
         new_ys = list(itertools.chain(*new_ys))
         ids = list(range(len(new_ys)))
         # evaluation
+        log.debug(f"Step {step} evaluation started -- {datetime.datetime.now()}")
         if args.method_evaluate == 'vote':
             values = get_votes(task, x, new_ys, args.n_evaluate_sample)
         elif args.method_evaluate == 'value':
@@ -90,14 +97,18 @@ def solve(args, task, idx):
             raise ValueError(f"Unknown evaluation method {args.method_evaluate}")
 
         # selection
+        log.debug(f"Step {step} selection started -- {datetime.datetime.now()}")
         if args.method_select == 'sample':
-            ps = np.array(values) / sum(values)
+            # add small value to avoid NaN if all values are 0, or is it better to fail in that case?
+            v = np.array(values)  # + 0.001
+            ps = v / v.sum()
             select_ids = np.random.choice(ids, size=args.n_select_sample, p=ps).tolist()
         elif args.method_select == 'greedy':
             select_ids = sorted(ids, key=lambda x: values[x], reverse=True)[:args.n_select_sample]
         else:
             raise ValueError(f"Unknown selection method {args.method_select}")
         select_new_ys = [new_ys[select_id] for select_id in select_ids]
+        log.debug(f"Step {step} done -- {datetime.datetime.now()}")
 
         # log
         if log.isEnabledFor(logging.DEBUG):
@@ -130,7 +141,12 @@ def run(args):
         file = f'logs/{args.task}/{args.backend}_{args.temperature}_{args.method_generate}{args.n_generate_sample}_{args.method_evaluate}{args.n_evaluate_sample}_{args.method_select}{args.n_select_sample}_start{args.task_start_index}_end{args.task_end_index}.json'
     os.makedirs(os.path.dirname(file), exist_ok=True)
 
+    run_start_time = datetime.datetime.now()
+    log.info(f"run start time: {run_start_time}")
+    task_times = []
     for i in range(args.task_start_index, args.task_end_index):
+        task_start_time = datetime.datetime.now()
+        log.info(f"task {i} -- start time: {task_start_time}")
         # solve
         if args.naive_run:
             ys, info = naive_solve(args, task, i)
@@ -148,7 +164,33 @@ def run(args):
         accs = [info['r'] for info in infos]
         cnt_avg += sum(accs) / len(accs)
         cnt_any += any(accs)
-        log.info(f'{i} sum(accs) {sum(accs)}, cnt_avg {cnt_avg}, cnt_any {cnt_any}')
+
+        task_end_time = datetime.datetime.now()
+        task_duration = task_end_time - task_start_time
+        log.info(
+            f"task {i} --"
+            f" sum(accs): {sum(accs)},"
+            f" cnt_avg: {cnt_avg},"
+            f" cnt_any: {cnt_any},"
+            f" end time {task_end_time},"
+            f" duration: {task_duration}"
+        )
+        task_times.append(task_duration)
+
+    run_end_time = datetime.datetime.now()
+    run_duration = run_end_time - run_start_time
+    log.info(f"run end time: {run_end_time}, run duration: {run_duration}")
+
+    task_times_sec = [t.total_seconds() for t in task_times]
+
+    log.info(f"task times: {task_times_sec}")
+    log.info(
+        f"task times"
+        f" mean: {statistics.mean(task_times_sec)},"
+        f" stdev: {statistics.stdev(task_times_sec)},"
+        f" min: {min(task_times_sec)},"
+        f" max: {max(task_times_sec)}"
+    )
 
     n = args.task_end_index - args.task_start_index
     log.info(f'{cnt_avg / n} {cnt_any / n}')
