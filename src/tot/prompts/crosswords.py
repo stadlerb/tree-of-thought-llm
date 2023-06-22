@@ -103,8 +103,6 @@ Input:
 Output:
 '''
 
-
-
 cot_prompt = '''Solve 5x5 mini crosswords. Given an input of 5 horizontal clues and 5 vertical clues, generate thoughts about which 5-letter word fits each clue, then an output of 5 rows, where each row is 5 letter separated by space.
 
 Input:
@@ -266,14 +264,12 @@ Input:
 {input}
 '''
 
-
 propose_prompt = '''Let's play a 5 x 5 mini crossword, where each word should have exactly 5 letters.
 
 {input}
 
 Given the current status, list all possible answers for unfilled or changed words, and your confidence levels (certain/high/medium/low), using the format "h1. apple (medium)". Use "certain" cautiously and only when you are 100% sure this is the correct word. You can list more then one possible answer for each word.
 '''
-
 
 value_prompt = '''Evaluate if there exists a five letter word of some meaning that fit some letter constraints (sure/maybe/impossible).
 

@@ -1,8 +1,9 @@
 import os
 import re
-from tot.tasks.base import Task, DATA_PATH
-from tot.prompts.text import *
+
 from tot.models import gpt
+from tot.prompts.text import *
+from tot.tasks.base import Task, DATA_PATH
 
 
 class TextTask(Task):
@@ -10,9 +11,10 @@ class TextTask(Task):
     Input (x)   : a text instruction
     Output (y)  : a text generation
     Reward (r)  : # TODO
-    Input Example: 
-    Output Example: 
+    Input Example:
+    Output Example:
     """
+
     def __init__(self, file='data_100_random_text.txt'):
         """
         file: a text file, each line is some sentences
@@ -25,10 +27,10 @@ class TextTask(Task):
 
     def __len__(self) -> int:
         return len(self.data)
-    
+
     def get_input(self, idx: int) -> str:
         return self.data[idx]
-    
+
     def test_output(self, idx: int, output: str):
         output = output.split('Passage:\n')[-1]
         prompt = score_prompt + output
@@ -47,13 +49,13 @@ class TextTask(Task):
         # print('------------')
         info = {'rs': scores, 'r': sum(scores) / len(scores) if scores else 0}
         return info
-    
+
     @staticmethod
-    def standard_prompt_wrap(x: str, y:str='') -> str:
+    def standard_prompt_wrap(x: str, y: str = '') -> str:
         return standard_prompt.format(input=x) + y
 
     @staticmethod
-    def cot_prompt_wrap(x: str, y:str='') -> str:
+    def cot_prompt_wrap(x: str, y: str = '') -> str:
         return cot_prompt.format(input=x) + y
 
     @staticmethod
@@ -64,7 +66,7 @@ class TextTask(Task):
             # TODO: truncate the plan part?
             prompt += f'Choice {i}:\n{y}\n'
         return prompt
-    
+
     @staticmethod
     def vote_outputs_unwrap(vote_outputs: list, n_candidates: int) -> list:
         vote_results = [0] * n_candidates
@@ -85,7 +87,7 @@ class TextTask(Task):
         ys = [y.split('Passage:\n')[-1] for y in ys]
         prompt = compare_prompt + f'Passage 1:\n{ys[0]}\n\nPassage 2:\n{ys[1]}\n'
         return prompt
-    
+
     @staticmethod
     def compare_output_unwrap(compare_output: str):
         if 'more coherent passage is 1' in compare_output:
