@@ -1,9 +1,12 @@
+import logging
 import os
 import re
 
 from tot.models import gpt
 from tot.prompts.text import *
 from tot.tasks.base import Task, DATA_PATH
+
+log = logging.getLogger(__name__)
 
 
 class TextTask(Task):
@@ -37,16 +40,16 @@ class TextTask(Task):
         score_outputs = gpt(prompt, n=5, model='gpt-4')
         scores = []
         for score_output in score_outputs:
-            # print(score_output)
+            # log.debug(score_output)
             pattern = r".*coherency score is (\d+).*"
             match = re.match(pattern, score_output, re.DOTALL)
             if match:
                 score = int(match.groups()[0])
                 scores.append(score)
             else:
-                print(f'------------------score no match: {[score_output]}')
-        print(scores)
-        # print('------------')
+                log.info(f'------------------score no match: {[score_output]}')
+        log.info(scores)
+        # log.debug('------------')
         info = {'rs': scores, 'r': sum(scores) / len(scores) if scores else 0}
         return info
 
@@ -78,7 +81,7 @@ class TextTask(Task):
                 if vote in range(n_candidates):
                     vote_results[vote] += 1
             else:
-                print(f'vote no match: {[vote_output]}')
+                log.info(f'vote no match: {[vote_output]}')
         return vote_results
 
     @staticmethod
@@ -97,5 +100,5 @@ class TextTask(Task):
         elif 'two passages are similarly coherent' in compare_output:
             return 0.5
         else:
-            print(f'-----------------compare no match: {[compare_output]}')
+            log.info(f'-----------------compare no match: {[compare_output]}')
             return -1

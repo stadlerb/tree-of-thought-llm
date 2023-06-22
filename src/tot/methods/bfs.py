@@ -1,8 +1,11 @@
 import itertools
+import logging
 from functools import partial
 
 import numpy as np
 import tot.models
+
+log = logging.getLogger(__name__)
 
 def get_value(task, x, y, n_evaluate_sample, cache_value=True):
     value_prompt = task.value_prompt_wrap(x, y)
@@ -52,10 +55,10 @@ def get_samples(task, x, y, n_generate_sample, prompt_sample, stop):
     return [y + _ for _ in samples]
 
 
-def solve(args, task, idx, to_print=True):
+def solve(args, task, idx):
     global gpt
     gpt = partial(tot.models.gpt, model=args.backend, temperature=args.temperature)
-    print(gpt)
+    log.debug(gpt)
     x = task.get_input(idx)  # input
     ys = ['']  # current output candidates
     infos = []
@@ -90,23 +93,23 @@ def solve(args, task, idx, to_print=True):
         select_new_ys = [new_ys[select_id] for select_id in select_ids]
 
         # log
-        if to_print:
+        if log.isEnabledFor(logging.DEBUG):
             sorted_new_ys, sorted_values = zip(*sorted(zip(new_ys, values), key=lambda x: x[1], reverse=True))
-            print(f'-- new_ys --: {sorted_new_ys}\n-- sol values --: {sorted_values}\n-- choices --: {select_new_ys}\n')
+            log.debug(
+                f'-- new_ys --: {sorted_new_ys}\n-- sol values --: {sorted_values}\n-- choices --: {select_new_ys}\n')
 
         infos.append(
             {'step': step, 'x': x, 'ys': ys, 'new_ys': new_ys, 'values': values, 'select_new_ys': select_new_ys})
         ys = select_new_ys
 
-    if to_print:
-        print(ys)
+    log.debug(ys)
     return ys, {'steps': infos}
 
 
-def naive_solve(args, task, idx, to_print=True):
+def naive_solve(args, task, idx):
     global gpt
     gpt = partial(tot.models.gpt, model=args.backend, temperature=args.temperature)
-    print(gpt)
+    log.debug(gpt)
     x = task.get_input(idx)  # input
     ys = get_samples(task, x, '', args.n_generate_sample, args.prompt_sample, stop=None)
     return ys, {}

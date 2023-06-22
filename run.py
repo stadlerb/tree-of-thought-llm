@@ -1,10 +1,13 @@
 import argparse
 import json
+import logging
 import os
 
 from tot.methods.bfs import solve, naive_solve
-from tot.models import gpt_usage
+from tot.models import gpt_usage, init_api
 from tot.tasks import get_task
+
+log = logging.getLogger("tree_of_thought_run")
 
 
 def run(args):
@@ -34,11 +37,11 @@ def run(args):
         accs = [info['r'] for info in infos]
         cnt_avg += sum(accs) / len(accs)
         cnt_any += any(accs)
-        print(i, 'sum(accs)', sum(accs), 'cnt_avg', cnt_avg, 'cnt_any', cnt_any, '\n')
+        log.info(f'{i} sum(accs) {sum(accs)}, cnt_avg {cnt_avg}, cnt_any {cnt_any}')
 
     n = args.task_end_index - args.task_start_index
-    print(cnt_avg / n, cnt_any / n)
-    print('usage_so_far', gpt_usage(args.backend))
+    log.info(f'{cnt_avg / n} {cnt_any / n}')
+    log.info(f'usage_so_far {gpt_usage(args.backend)}')
 
 
 def parse_args():
@@ -61,11 +64,16 @@ def parse_args():
     args.add_argument('--n_evaluate_sample', type=int, default=1)
     args.add_argument('--n_select_sample', type=int, default=1)
 
+    args.add_argument('--log_level', type=str, choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'],
+                      default='INFO')
+
     args = args.parse_args()
     return args
 
 
 if __name__ == '__main__':
     args = parse_args()
-    print(args)
+    logging.basicConfig(level=args.log_level)
+    log.info(args)
+    init_api()
     run(args)
