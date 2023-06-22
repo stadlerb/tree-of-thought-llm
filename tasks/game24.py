@@ -1,9 +1,11 @@
-import re
 import os
-import sympy
+import re
+
 import pandas as pd
+import sympy
+
+from prompts.game24 import *
 from tasks.base import Task, DATA_PATH
-from prompts.game24 import * 
 
 
 def get_current_numbers(y: str) -> str:
@@ -24,6 +26,7 @@ class Game24Task(Task):
         6 * 4 = 24 (left: 24)
         (1 + 2 + 3) * 4 = 24
     """
+
     def __init__(self, file='24.csv'):
         """
         file: a csv file (fixed)
@@ -37,7 +40,7 @@ class Game24Task(Task):
 
     def __len__(self) -> int:
         return len(self.data)
-    
+
     def get_input(self, idx: int) -> str:
         return self.data[idx]
 
@@ -53,17 +56,17 @@ class Game24Task(Task):
         except Exception as e:
             # print(e)
             return {'r': 0}
-            
+
     @staticmethod
-    def standard_prompt_wrap(x: str, y:str='') -> str:
+    def standard_prompt_wrap(x: str, y: str = '') -> str:
         return standard_prompt.format(input=x) + y
 
     @staticmethod
-    def cot_prompt_wrap(x: str, y:str='') -> str:
+    def cot_prompt_wrap(x: str, y: str = '') -> str:
         return cot_prompt.format(input=x) + y
-    
+
     @staticmethod
-    def propose_prompt_wrap(x: str, y: str='') -> str:
+    def propose_prompt_wrap(x: str, y: str = '') -> str:
         current_numbers = get_current_numbers(y if y else x)
         if current_numbers == '24':
             prompt = cot_prompt.format(input=x) + 'Steps:' + y
@@ -71,7 +74,7 @@ class Game24Task(Task):
         else:
             prompt = propose_prompt.format(input=current_numbers)
         return prompt
-    
+
     @staticmethod
     def value_prompt_wrap(x: str, y: str) -> str:
         last_line = y.strip().split('\n')[-1]
@@ -81,7 +84,7 @@ class Game24Task(Task):
             return value_last_step_prompt.format(input=x, answer=ans)
         current_numbers = get_current_numbers(y)
         return value_prompt.format(input=current_numbers)
-    
+
     @staticmethod
     def value_outputs_unwrap(x: str, y: str, value_outputs: list) -> float:
         if len(y.strip().split('\n')) == 4 and 'answer' not in y.lower():

@@ -1,5 +1,6 @@
 DATA_PATH = './data'
 
+
 class Task:
     def __init__(self):
         pass
