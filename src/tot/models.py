@@ -88,10 +88,20 @@ async def acompletions_with_backoff(**kwargs):
 
 def gpt_usage(backend="gpt-4"):
     global completion_tokens, prompt_tokens
-    if backend == "gpt-4":
-        cost = completion_tokens / 1000 * 0.06 + prompt_tokens / 1000 * 0.03
-    elif backend == "gpt-3.5-turbo":
-        cost = completion_tokens / 1000 * 0.002 + prompt_tokens / 1000 * 0.0015
+    if "gpt-4-32k" in backend:
+        cost_per_prompt_token = 0.06 / 1000
+        cost_per_completion_token = 0.12 / 1000
+    elif "gpt-4" in backend:
+        cost_per_prompt_token = 0.03 / 1000
+        cost_per_completion_token = 0.06 / 1000
+    elif "gpt-3.5-turbo-32k" in backend:
+        cost_per_prompt_token = 0.003 / 1000
+        cost_per_completion_token = 0.004 / 1000
+    elif "gpt-3.5-turbo" in backend:
+        cost_per_prompt_token = 0.0015 / 1000
+        cost_per_completion_token = 0.002 / 1000
     else:
-        cost = "unknown"
+        cost_per_prompt_token = float('NaN')
+        cost_per_completion_token = float('NaN')
+    cost = completion_tokens * cost_per_completion_token + prompt_tokens * cost_per_prompt_token
     return {"completion_tokens": completion_tokens, "prompt_tokens": prompt_tokens, "cost": cost}
