@@ -98,6 +98,8 @@ def parse_args():
     args.add_argument('--n_evaluate_sample', type=int, default=1)
     args.add_argument('--n_select_sample', type=int, default=1)
 
+    args.add_argument('--max_open_requests', type=int, default=20)
+
     args.add_argument('--log_level', type=str, choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'],
                       default='INFO')
 

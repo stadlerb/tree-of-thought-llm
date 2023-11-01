@@ -61,25 +61,27 @@ async def aconst(x: T) -> T:
     return x
 
 
-async def aget_values(task, x, ys, n_evaluate_sample, cache_value=True) -> List[float]:
+async def aget_values(task, x, ys, n_evaluate_sample, cache_value=True, max_open_requests=20) -> List[float]:
     a_values: List[typing.Coroutine[Any, Any, float]] = []
     local_value_cache = {}
     n = len(ys)
+    sem = asyncio.Semaphore(max_open_requests) # Limit number of concurrent requests
     for i, y in enumerate(ys):  # each partial output
         log.debug(f"get_value {i} / {n} -- {datetime.datetime.now()}")
         if y in local_value_cache:  # avoid duplicate candidates
             a_value = aconst(0.0)
             log.debug("--> duplicate candidate, value set to 0")
         else:
-            a_value = aget_value(task, x, y, n_evaluate_sample, cache_value=cache_value)
-            local_value_cache[y] = a_value
+            async with sem:
+                a_value = aget_value(task, x, y, n_evaluate_sample, cache_value=cache_value)
+                local_value_cache[y] = a_value
         a_values.append(a_value)
     results: List[float | Exception] = await asyncio.gather(*a_values, return_exceptions=True)
     return [result if not isinstance(result, Exception) else 0.0 for result in results]
 
 
-def get_values_async(task, x, ys, n_evaluate_sample, cache_value=True):
-    return asyncio.run(aget_values(task, x, ys, n_evaluate_sample, cache_value=cache_value))
+def get_values_async(task, x, ys, n_evaluate_sample, cache_value=True, max_open_requests=20):
+    return asyncio.run(aget_values(task, x, ys, n_evaluate_sample, cache_value=cache_value, max_open_requests=max_open_requests))
 
 
 def get_votes(task, x, ys, n_evaluate_sample):
@@ -131,7 +133,7 @@ def solve(args, task, idx):
         elif args.method_evaluate == 'value':
             values = get_values(task, x, new_ys, args.n_evaluate_sample)
         elif args.method_evaluate == 'value_async':
-            values = get_values_async(task, x, new_ys, args.n_evaluate_sample)
+            values = get_values_async(task, x, new_ys, args.n_evaluate_sample, max_open_requests=args.max_open_requests)
         else:
             raise ValueError(f"Unknown evaluation method {args.method_evaluate}")
 
